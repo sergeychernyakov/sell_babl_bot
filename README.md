@@ -68,10 +68,5 @@ This bot is designed for use with ERC-20 tokens on the Ethereum blockchain. Ensu
 
 
 Plan:
-  show logs also in the console
-  use Web3.to_checksum_address
-
-ERROR:root:Error occurred: ('web3.py only accepts checksum addresses. The software that gave you this non-checksum address should be considered unsafe, please file it as a bug on their platform. Try using an ENS name instead. Or, if you must accept lower safety, use Web3.to_checksum_address(lower_case_address).', '0x0984020d31e52ded8283fdd798e8f544c085a999')
-ERROR:root:Error occurred: ('web3.py only accepts checksum addresses. The software that gave you this non-checksum address should be considered unsafe, please file it as a bug on their platform. Try using an ENS name instead. Or, if you must accept lower safety, use Web3.to_checksum_address(lower_case_address).', '0x0984020d31e52ded8283fdd798e8f544c085a999')
-
+finish 1inch Aggregation Router
 

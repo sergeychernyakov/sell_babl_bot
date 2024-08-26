@@ -95,7 +95,6 @@ class BotManager:
                     else:
                         logging.info(f'Skipping transaction for {round(self.web3.from_wei(amount_in_wei, "ether"))} tokens due to gas estimation failure.')
 
-                          
                     # Halve the amount for the next transaction
                     amount_in_wei //= 2
 
@@ -272,9 +271,9 @@ class BotManager:
         # Sign the transaction with the private key
         signed_tx = self.account.sign_transaction(transaction)
         # Send the signed transaction to the blockchain network
-        return '0xc76d55f2a75a8f5a935f26082f0029dfad96c3bb18752b1b0da303a92ef0611c' # testing result
-        # tx_hash = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        # return tx_hash.hex()
+        # return '0xc76d55f2a75a8f5a935f26082f0029dfad96c3bb18752b1b0da303a92ef0611c' # testing result
+        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        return tx_hash.hex()
 
     def get_erc20_abi(self) -> list:
         """
