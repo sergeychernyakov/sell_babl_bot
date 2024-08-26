@@ -4,11 +4,11 @@ import os
 import logging
 import time
 from web3 import Web3
-from web3.providers.websocket import LegacyWebSocketProvider
 from dotenv import load_dotenv
 
 class BotManager:
-    MAX_PRIORITY_FEE_PER_GAS = Web3.to_wei(2, 'gwei')  # Constant priority fee for transactions
+    MAX_PRIORITY_FEE_PER_GAS = Web3.to_wei(1, 'gwei')  # Constant priority fee for transactions
+    GAS_LIMIT = 400000
 
     def __init__(self):
         """
@@ -16,49 +16,80 @@ class BotManager:
         """
         load_dotenv()  # Load environment configurations from .env file
 
+        # Set up logging to both console and file
+        self.setup_logging()
+
         # Load private key from environment variables
         self.private_key = os.getenv('PK')
 
         # Configuration parameters loaded from environment or default values
-        self.token_address = '0x0984020d31e52ded8283fdd798e8f544c085a999' # Default token
-        self.weth_address = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'  # WETH address for swaps
+        self.token_address = Web3.to_checksum_address('0x0984020d31e52ded8283fdd798e8f544c085a999')  # Default token BABL
+        self.weth_address = Web3.to_checksum_address('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')  # WETH address for swaps
+        self.router_address = Web3.to_checksum_address('0x1111111254EEB25477B68fb85Ed929f73A960582')  # 1inch Aggregation Router
 
-        # Initialize Web3 with the provided WebSocket URI using LegacyWebSocketProvider
-        self.web3 = Web3(LegacyWebSocketProvider('ws://192.168.3.118:8546'))
+        # Initialize Web3 with the provided WebSocket URI
+        self.web3 = Web3(Web3.WebsocketProvider('ws://192.168.3.118:8546'))
 
         # Get the wallet account from the private key
-        self.account = self.web3.eth.account.privateKeyToAccount(self.private_key)
+        self.account = self.web3.eth.account.from_key(self.private_key)
         self.wallet_address = self.account.address  # Store the wallet address
 
-        # Set up logging to a file named 'bot.log'
-        logging.basicConfig(filename='bot.log', level=logging.INFO)
-        logging.info('Bot initialized')
+        logging.info(f"Bot initialized on wallet: https://etherscan.io/address/{self.wallet_address}")
+
+    def setup_logging(self):
+        """
+        Sets up logging to both file and console.
+        """
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+
+        # File handler
+        file_handler = logging.FileHandler('bot.log')
+        file_handler.setLevel(logging.INFO)
+
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+
+        # Formatter
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+
+        # Add handlers to the logger
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
 
     def run(self):
         """
         Main loop of the bot. Continuously checks the token balance and tries to sell the tokens.
         """
-        logging.info("Bot started")
+        logging.info(f"Bot started on wallet: https://etherscan.io/address/{self.wallet_address}")
         while True:
             try:
                 # Get the current token balance of the wallet
                 token_balance = self.get_token_balance()
-                logging.info(f'Current token balance: {token_balance} tokens')
+                logging.info(f'Current token balance: {round(self.web3.from_wei(token_balance, "ether"))} tokens')
 
                 # Attempt to sell tokens starting with the full balance, halving the amount each iteration
-                amount = token_balance
-                while amount >= 1:
+                amount_in_wei = token_balance
+                while amount_in_wei >= 1000000000000000000:
                     # Estimate gas for the transaction
-                    estimated_gas = self.sell(amount, only_estimate=True)
+                    estimated_gas = self.sell(amount_in_wei, only_estimate=True)
 
                     # If gas estimation is successful, proceed with the actual transaction
                     if estimated_gas:
-                        self.sell(amount, only_estimate=False)
+                        result = self.sell(amount_in_wei, only_estimate=False)
+                        if result is None:  # Exit the loop if the transaction failed
+                            logging.info("Exiting loop due to failed transaction.")
+                            return
                     else:
-                        logging.info(f"Skipping transaction for {amount} tokens due to gas estimation failure")
-                    
+                        logging.info(f'Skipping transaction for {round(self.web3.from_wei(amount_in_wei, "ether"))} tokens due to gas estimation failure')
+
                     # Halve the amount for the next transaction
-                    amount /= 2
+                    amount_in_wei //= 2
+
+                    time.sleep(1)
 
                 # Exit loop if balance is 0 to prevent unnecessary operations
                 if token_balance == 0:
@@ -69,33 +100,33 @@ class BotManager:
                 # Log any unexpected errors
                 logging.error(f"Error occurred: {str(e)}")
 
-    def get_token_balance(self) -> float:
+    def get_token_balance(self) -> int:
         """
         Fetches the balance of the specified ERC-20 token in the wallet.
         
         Returns:
-        - float: The balance of the token in Ether units.
+        - int: The balance of the token in Wei.
         """
         # Interact with the ERC-20 contract using its ABI and address
-        contract = self.web3.eth.contract(address=self.token_address, abi=self.get_abi())
+        contract = self.web3.eth.contract(address=self.token_address, abi=self.get_erc20_abi())
         # Call the balanceOf function to get the balance of the wallet
         balance = contract.functions.balanceOf(self.wallet_address).call()
-        # Convert the balance from Wei to Ether for easier reading
-        return self.web3.from_wei(balance, 'ether')
+        return balance
 
-    def sell(self, amount: float, only_estimate: bool = True) -> int | None:
+    def sell(self, amount_in_wei: int, amount_out_min_in_wei: int = 0, only_estimate: bool = True) -> int | None:
         """
         Sells a specified amount of the token, either by estimating gas usage or executing the transaction.
-        
+
         Parameters:
-        - amount (float): The amount of tokens to sell.
+        - amount_in_wei (int): The amount of tokens to sell, in Wei.
+        - amount_out_min_in_wei (int): The minimum amount of output token to receive, in Wei.
         - only_estimate (bool): If True, only estimates gas usage without executing the transaction.
-        
+
         Returns:
         - int: Estimated gas amount if only_estimate is True, otherwise None.
         """
         # Build the transaction dictionary
-        transaction = self.build_transaction(amount)
+        transaction = self.build_transaction(amount_in_wei, amount_out_min_in_wei)
 
         if only_estimate:
             # Estimate the gas required for the transaction
@@ -104,34 +135,57 @@ class BotManager:
         try:
             # Execute the swap transaction and log the transaction hash
             tx_hash = self.execute_swap(transaction)
-            logging.info(f"Transaction sent: {tx_hash}")
+            logging.info(f"Transaction sent: https://etherscan.io/tx/{tx_hash}")
+
             # Wait for transaction receipt to confirm success
-            self.web3.eth.wait_for_transaction_receipt(tx_hash)
-            logging.info(f"Transaction successful for {amount} tokens")
+            receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash)
+            
+            if receipt['status'] == 1:
+                logging.info(f'Transaction successful for {round(self.web3.from_wei(amount_in_wei, "ether"))} tokens')
+            else:
+                logging.error(f'Transaction failed for {round(self.web3.from_wei(amount_in_wei, "ether"))} tokens. Exiting loop.')
+                return None  # Exit the loop if the transaction failed
+
         except Exception as e:
             # Log errors if transaction fails
-            logging.error(f"Transaction failed for {amount} tokens: {str(e)}")
+            logging.error(f'Transaction failed for {round(self.web3.from_wei(amount_in_wei, "ether"))} tokens: {str(e)}')
+            return None
+
         return None
 
-    def build_transaction(self, amount: float) -> dict:
+    def build_transaction(self, amount_in_wei: int, amount_out_min_in_wei: int) -> dict:
         """
-        Builds a transaction for swapping tokens for ETH.
-        
+        Builds a transaction for swapping tokens using the 1inch Aggregation Router.
+
         Parameters:
-        - amount (float): The amount of tokens to sell.
-        
+        - amount_in_wei (int): The amount of tokens to sell, in Wei.
+        - amount_out_min_in_wei (int): The minimum amount of output token to receive, in Wei.
+
         Returns:
         - dict: The transaction dictionary containing necessary details for execution.
         """
-        # Interact with the token contract using its ABI
-        contract = self.web3.eth.contract(address=self.token_address, abi=self.get_abi())
+        # Interact with the 1inch Aggregation Router contract using its ABI
+        router_contract = self.web3.eth.contract(address=self.router_address, abi=self.get_router_abi())
 
-        # Build the transaction to swap tokens for ETH
-        transaction = contract.functions.swapExactTokensForETH(
-            amount, 0, [self.token_address, self.weth_address], self.wallet_address, int(time.time()) + 60
+        # Build the transaction using the 1inch swap method
+        transaction = router_contract.functions.swap(
+            self.wallet_address,  # Sender
+            {
+                'srcToken': self.token_address,
+                'dstToken': self.weth_address,
+                'srcReceiver': self.wallet_address,
+                'dstReceiver': self.wallet_address,
+                'amount': amount_in_wei,
+                'minReturnAmount': amount_out_min_in_wei,
+                'flags': 0,
+                'permit': b'',
+                'data': b''
+            },
+            b''  # Data for the swap
         ).buildTransaction({
             'from': self.wallet_address,
             'nonce': self.web3.eth.get_transaction_count(self.wallet_address),
+            'gas': self.GAS_LIMIT,
             'maxPriorityFeePerGas': self.MAX_PRIORITY_FEE_PER_GAS,  # Set priority fee for transaction speed
             'maxFeePerGas': self.get_current_gas_price()  # Set maximum fee for the transaction based on real-time gas price
         })
@@ -176,12 +230,13 @@ class BotManager:
         - str: The transaction hash as a string if successful.
         """
         # Sign the transaction with the private key
-        signed_tx = self.web3.eth.account.sign_transaction(transaction, private_key=self.private_key)
+        signed_tx = self.account.sign_transaction(transaction)
         # Send the signed transaction to the blockchain network
-        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        # return '0xac85a620a03119dca5488883e5581548b3e2933420120888f80dd9bfab510a86' # testing result
+        tx_hash = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         return tx_hash.hex()
 
-    def get_abi(self) -> list:
+    def get_erc20_abi(self) -> list:
         """
         Provides the standard ABI for ERC-20 tokens.
         
@@ -196,19 +251,42 @@ class BotManager:
                 "name": "balanceOf",
                 "outputs": [{"name": "balance", "type": "uint256"}],
                 "type": "function"
-            },
+            }
+        ]
+
+    def get_router_abi(self) -> list:
+        """
+        Provides the ABI for the 1inch Aggregation Router.
+        
+        Returns:
+        - list: A list representing the ABI for 1inch Aggregation Router functions.
+        """
+        # Simplified ABI for the 1inch Aggregation Router
+        return [
             {
                 "constant": False,
                 "inputs": [
-                    {"name": "amountIn", "type": "uint256"},
-                    {"name": "amountOutMin", "type": "uint256"},
-                    {"name": "path", "type": "address[]"},
-                    {"name": "to", "type": "address"},
-                    {"name": "deadline", "type": "uint256"}
+                    {"name": "caller", "type": "address"},
+                    {
+                        "name": "desc",
+                        "type": "tuple",
+                        "components": [
+                            {"name": "srcToken", "type": "address"},
+                            {"name": "dstToken", "type": "address"},
+                            {"name": "srcReceiver", "type": "address"},
+                            {"name": "dstReceiver", "type": "address"},
+                            {"name": "amount", "type": "uint256"},
+                            {"name": "minReturnAmount", "type": "uint256"},
+                            {"name": "flags", "type": "uint256"},
+                            {"name": "permit", "type": "bytes"},
+                            {"name": "data", "type": "bytes"},
+                        ],
+                    },
+                    {"name": "data", "type": "bytes"}
                 ],
-                "name": "swapExactTokensForETH",
-                "outputs": [{"name": "amounts", "type": "uint256[]"}],
-                "type": "function"
+                "name": "swap",
+                "outputs": [{"name": "returnAmount", "type": "uint256"}],
+                "type": "function",
             }
         ]
 
@@ -223,7 +301,9 @@ class BotManager:
 # python3 bot_manager.py
 if __name__ == '__main__':
     bot = BotManager()  # Create an instance of the BotManager class
-    try:
-        bot.run()  # Start the bot's main loop
-    except (KeyboardInterrupt, SystemExit):
-        bot.stop()  # Stop the bot if a keyboard interrupt or system exit signal is received
+    # try:
+    #     bot.run()  # Start the bot's main loop
+    # except (KeyboardInterrupt, SystemExit):
+    #     bot.stop()  # Stop the bot if a keyboard interrupt or system exit signal is received
+
+    bot.sell(bot.web3.to_wei(49, "ether"), only_estimate=False)
