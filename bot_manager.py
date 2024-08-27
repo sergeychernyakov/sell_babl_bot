@@ -45,7 +45,7 @@ class BotManager:
         logger.setLevel(logging.INFO)
 
         # File handler
-        file_handler = RotatingFileHandler('bot.log', maxBytes=5*1024*1024, backupCount=5)
+        file_handler = RotatingFileHandler('tmp/bot.log', maxBytes=5*1024*1024, backupCount=5)
         file_handler.setLevel(logging.INFO)
 
         # Console handler
