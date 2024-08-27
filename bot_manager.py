@@ -1,4 +1,4 @@
-# src/bot_manager.py
+# bot_manager.py
 
 import os
 import logging
@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from logging.handlers import RotatingFileHandler
 
 class BotManager:
-    MAX_PRIORITY_FEE_PER_GAS = Web3.to_wei(1, 'gwei')  # Constant priority fee for transactions
+    MAX_PRIORITY_FEE_PER_GAS = Web3.to_wei(2, 'gwei')  # Constant priority fee for transactions
     GAS_LIMIT = 400000
 
     def __init__(self):
@@ -232,12 +232,17 @@ class BotManager:
 
     def get_current_gas_price(self) -> int:
         """
-        Fetches the current gas price from the network.
-        
+        Fetches the base fee from the latest block and calculates the maximum fee per gas
+        by adding the constant MAX_PRIORITY_FEE_PER_GAS.
+
         Returns:
-        - int: Current gas price in Wei.
+        - int: The maximum fee per gas in Wei, which includes the base fee and max priority fee.
         """
-        return self.web3.eth.gas_price
+        latest_block = self.web3.eth.get_block('latest')  # Get the latest block
+        base_fee = latest_block['baseFeePerGas']  # Fetch the base fee per gas from the latest block
+        max_priority_fee = self.MAX_PRIORITY_FEE_PER_GAS  # Use the constant priority fee
+        max_fee_per_gas = base_fee + max_priority_fee  # Calculate the total max fee per gas
+        return max_fee_per_gas
 
     def estimate_gas(self, transaction: dict) -> int | None:
         """
