@@ -26,7 +26,14 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# Ignore all files inside the tmp directory
 tmp/*
+
+# Except this file (placeholder to keep the tmp directory in Git)
+!tmp/.gitkeep
+
+# Ignore bot.log specifically
+bot.log
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
