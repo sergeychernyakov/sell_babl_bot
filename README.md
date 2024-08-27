@@ -2,36 +2,50 @@
 
 # Token Selling Bot
 
-A bot that continuously checks for the possibility to sell a token. Once trading becomes open, it sells the tokens. It tries various token amount ranges - starting from a large amount and decreasing down to 1. It first estimates the gas required for a transaction, and if a gas amount is returned, it proceeds with the transaction with increased fees. If the transaction succeeds, it continues until the entire token balance is sold.
+A bot that continuously checks for the possibility to sell a specific ERC-20 token. The bot uses the Uniswap V2 Router to swap the token for ETH. It starts by attempting to sell a large amount of tokens and decreases the amount until the entire balance is sold. The bot estimates gas requirements before executing any transaction to avoid excessive fees. If a gas amount is returned successfully, the transaction is executed with increased priority fees.
 
-**Uses `.env` to store private data.**  
-Uses `swapExactTokensForETH` to sell tokens.
-
-## Configuration
-- `WEBSOCKET_URI`: WebSocket endpoint for the Ethereum node
-- `TOKEN_ADDRESS`: Address of the token to sell
-- `WETH_ADDRESS`: Address of WETH (used for swapping)
+**The bot uses `.env` to store sensitive data such as the private key.**  
+The token selling is performed using the `swapExactTokensForETH` method from Uniswap V2 Router.
 
 ## Bot Logic
-The bot continuously attempts to sell tokens via `swapExactTokensForETH` on Uniswap. It fetches the total token balance in the wallet and attempts to sell everything, lowering the amount by half each time until the amount reaches 1 token. To avoid excessive fees, it estimates the gas required before each transaction. If a gas amount is returned, the transaction is executed with an increased fee. Successful transactions are logged, and the bot continues until the entire token balance is sold. All events such as wallet balance, sell attempts, etc., are logged in a file.
+- **Initialization:** The bot initializes by loading environment variables, setting up logging with a rotating file handler, and establishing a connection to the Ethereum network via Web3.
+- **Continuous Operation:** In the main loop, the bot:
+  - Checks the token balance in the wallet.
+  - Estimates gas fees required for a transaction before attempting to sell tokens.
+  - Executes the transaction if gas estimation is successful.
+  - Logs each action and result for monitoring purposes.
+- **Allowance Check:** Before executing any transaction, the bot ensures that sufficient allowance is set for the Uniswap V2 Router to spend tokens on behalf of the wallet. If not, it attempts to set an unlimited allowance.
 
 ## Project Structure
-- `.env`: Environment variables
-- `bot_manager.py`: Main bot code
+- `.env`: Contains environment variables such as the private key.
+- `bot_manager.py`: Main bot code handling the logic of token selling and transaction management.
 
-### Methods:
-- `run`: Main loop to run the bot.
-- `sell(only_estimate)`: Method to estimate gas or execute a sell.
+### Key Methods:
+- `run()`: Main loop that manages the bot's operation.
+- `sell(amount_in_wei, only_estimate=True)`: Estimates gas usage or executes a token sell transaction.
+- `get_token_balance()`: Fetches the token balance in the wallet.
+- `check_allowance(amount_in_wei)`: Checks if the Uniswap V2 Router has sufficient allowance to spend tokens.
+- `set_allowance(amount_in_wei)`: Sets or updates the allowance for the Uniswap V2 Router.
+- `build_transaction(amount_in_wei, amount_out_min_in_wei)`: Builds the transaction dictionary for selling tokens.
+- `estimate_gas(transaction)`: Estimates the gas required for a transaction.
+- `execute_swap(transaction)`: Executes a signed transaction on the Ethereum blockchain.
+
+### Logging:
+- The bot uses a rotating file handler to manage log files (`bot.log`) with a maximum size of 5MB per file and up to 5 backup files. This prevents the log file from growing too large.
+- Log messages include transaction status, gas estimation results, allowance checks, and errors.
 
 ### Stopping the Bot Gracefully:
+The bot can be stopped gracefully with a keyboard interrupt (Ctrl+C), which will log a stop message and exit the program.
+
 ```python
 except (KeyboardInterrupt, SystemExit):
     logging.info("Bot received stop signal")
+    bot.stop()
 ```
 
 ## Setup
 
-To set up the app locally, follow these steps:
+To set up the bot locally, follow these steps:
 
 1. Clone the repository to your local machine:
     ```sh
@@ -53,20 +67,20 @@ To set up the app locally, follow these steps:
     ```sh
     cp .env.example .env
     ```
-    Then edit `.env` to set your configurations.
+    Edit the `.env` file to set your private key and other configurations.
 6. Export the Installed Packages:
     ```sh
     pip freeze > requirements.txt
     ```
-7. Run the app:
+7. Run the bot:
     ```sh
     python3 bot_manager.py
     ```
 
-### Note:
-This bot is designed for use with ERC-20 tokens on the Ethereum blockchain. Ensure that all environmental variables are properly configured in the `.env` file.
+### Important Notes:
+- **Environment Variables:** Ensure that all required environment variables (e.g., `PK` for the private key) are set in the `.env` file.
+- **Gas Fees:** Be aware of gas fees on the Ethereum network, especially during periods of high congestion.
+- **Token Contract:** This bot is designed for use with ERC-20 tokens on the Ethereum blockchain. Adjust the `token_address` in the code as needed.
 
-
-Plan:
-finish 1inch Aggregation Router
-
+## Disclaimer
+This bot interacts with the Ethereum blockchain and executes real transactions. Use it responsibly and ensure you understand the risks involved in automated trading. The developers are not responsible for any losses incurred.

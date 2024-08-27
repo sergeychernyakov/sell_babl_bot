@@ -370,15 +370,3 @@ if __name__ == '__main__':
         bot.run()  # Start the bot's main loop
     except (KeyboardInterrupt, SystemExit):
         bot.stop()  # Stop the bot if a keyboard interrupt or system exit signal is received
-
-    # token_balance = bot.get_token_balance()
-    # print(token_balance)
-
-    # # Check and set allowance if not sufficient
-    # if not bot.check_allowance(token_balance):
-    #     logging.info("Allowance is insufficient. Setting allowance.")
-
-        # if not bot.set_allowance(token_balance):
-        #     logging.error("Failed to set allowance, cannot proceed with swap.")
-
-    # bot.sell(bot.web3.to_wei(499, "ether"), only_estimate=False)
