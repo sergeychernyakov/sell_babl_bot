@@ -93,7 +93,7 @@ class BotManager:
                             logging.info("Exiting loop due to failed transaction.")
                             return
                     else:
-                        logging.info(f'Skipping transaction for {round(self.web3.from_wei(amount_in_wei, "ether"))} tokens due to gas estimation failure.')
+                        logging.info(f'Skipping transaction for <<<   {round(self.web3.from_wei(amount_in_wei, "ether"))}   >>> tokens due to gas estimation failure.')
 
                     # Halve the amount for the next transaction
                     amount_in_wei //= 2
